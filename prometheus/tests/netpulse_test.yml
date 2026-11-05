@@ -55,14 +55,18 @@ tests:
               summary: "Prometheus cannot reach netpulse, so target checks are not being seen"
 
   - name: Certificate expiry warning
-    interval: 10m
+    # Samples must be under 5 minutes apart, or Prometheus treats the series as gone.
+    interval: 1m
     input_series:
       - series: 'netpulse_tls_cert_days_remaining{job="netpulse", target="site"}'
-        values: "13x12"
+        values: "13x90"
       - series: 'netpulse_tls_cert_days_remaining{job="netpulse", target="healthy"}'
-        values: "90x12"
+        values: "90x90"
     alert_rule_test:
-      - eval_time: 110m
+      - eval_time: 30m
+        alertname: NetpulseCertExpiringSoon
+        exp_alerts: []
+      - eval_time: 70m
         alertname: NetpulseCertExpiringSoon
         exp_alerts:
           - exp_labels:
