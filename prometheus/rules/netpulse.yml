@@ -1,0 +1,34 @@
+groups:
+  - name: netpulse
+    rules:
+      - alert: NetpulseTargetDown
+        expr: netpulse_target_up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.target }} is down"
+
+      - alert: NetpulseNotScraped
+        expr: up{job="netpulse"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Prometheus cannot reach netpulse, so target checks are not being seen"
+
+      - alert: NetpulseHighLatency
+        expr: histogram_quantile(0.95, sum by (target, le) (rate(netpulse_check_latency_seconds_bucket[5m]))) > 1
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.target }} p95 latency is above 1 second"
+
+      - alert: NetpulseCertExpiringSoon
+        expr: netpulse_tls_cert_days_remaining < 14
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "The TLS certificate for {{ $labels.target }} expires in under 14 days"

@@ -1,0 +1,73 @@
+# Unit tests for the alert rules. Run with: promtool test rules prometheus/tests/netpulse_test.yml
+rule_files:
+  - ../rules/netpulse.yml
+
+evaluation_interval: 1m
+
+tests:
+  - name: A target must stay down for the full duration before the alert fires
+    interval: 1m
+    input_series:
+      - series: 'netpulse_target_up{job="netpulse", target="web", type="http"}'
+        values: "1 1 0 0 0 0"
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: NetpulseTargetDown
+        exp_alerts: []
+      - eval_time: 2m
+        alertname: NetpulseTargetDown
+        exp_alerts: []
+      - eval_time: 4m
+        alertname: NetpulseTargetDown
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              job: netpulse
+              target: web
+              type: http
+            exp_annotations:
+              summary: "web is down"
+
+  - name: A brief failure that recovers does not fire
+    interval: 1m
+    input_series:
+      - series: 'netpulse_target_up{job="netpulse", target="web", type="http"}'
+        values: "1 0 1 1 1 1"
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: NetpulseTargetDown
+        exp_alerts: []
+
+  - name: Losing netpulse itself raises its own alert
+    interval: 1m
+    input_series:
+      - series: 'up{job="netpulse", instance="netpulse:8000"}'
+        values: "1 0 0 0 0"
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: NetpulseNotScraped
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              job: netpulse
+              instance: netpulse:8000
+            exp_annotations:
+              summary: "Prometheus cannot reach netpulse, so target checks are not being seen"
+
+  - name: Certificate expiry warning
+    interval: 10m
+    input_series:
+      - series: 'netpulse_tls_cert_days_remaining{job="netpulse", target="site"}'
+        values: "13x12"
+      - series: 'netpulse_tls_cert_days_remaining{job="netpulse", target="healthy"}'
+        values: "90x12"
+    alert_rule_test:
+      - eval_time: 110m
+        alertname: NetpulseCertExpiringSoon
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: netpulse
+              target: site
+            exp_annotations:
+              summary: "The TLS certificate for site expires in under 14 days"

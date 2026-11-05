@@ -1,0 +1,11 @@
+# Add your own routers, servers and websites here.
+targets:
+  # The stack watches itself. Stop one of these containers to see the alert path work.
+  - { name: prometheus, type: http, url: "http://prometheus:9090/-/healthy", interval_seconds: 15 }
+  - { name: alertmanager, type: http, url: "http://alertmanager:9093/-/healthy", interval_seconds: 15 }
+  - { name: grafana, type: http, url: "http://grafana:3000/api/health", interval_seconds: 15 }
+
+  # External reachability.
+  - { name: cloudflare-dns, type: tcp, host: 1.1.1.1, port: 53, interval_seconds: 15 }
+  - { name: example-dns, type: dns, host: example.com, interval_seconds: 60 }
+  - { name: example-cert, type: tls, host: example.com, interval_seconds: 3600 }

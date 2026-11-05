@@ -1,0 +1,68 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  static:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install pytest pyyaml ruff
+      - run: ruff check .
+      - run: pytest
+
+  validate-configs:
+    runs-on: ubuntu-latest
+    env:
+      GRAFANA_ADMIN_PASSWORD: ci-only-value
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compose file
+        run: docker compose config --quiet
+      - name: Prometheus config
+        run: >
+          docker run --rm -v "$PWD/prometheus:/etc/prometheus:ro" --entrypoint promtool
+          prom/prometheus:v2.53.0 check config /etc/prometheus/prometheus.yml
+      - name: Alert rule unit tests
+        run: >
+          docker run --rm -v "$PWD/prometheus:/work:ro" --entrypoint promtool
+          prom/prometheus:v2.53.0 test rules /work/tests/netpulse_test.yml
+      - name: Alertmanager config
+        run: >
+          docker run --rm -v "$PWD/alertmanager:/work:ro" --entrypoint amtool
+          prom/alertmanager:v0.27.0 check-config /work/alertmanager.yml
+
+  end-to-end:
+    runs-on: ubuntu-latest
+    env:
+      GRAFANA_ADMIN_PASSWORD: ci-only-value
+    steps:
+      - uses: actions/checkout@v4
+      - name: Start the stack
+        run: docker compose up -d --build --wait --wait-timeout 180
+      - name: Prometheus should be scraping netpulse
+        run: |
+          for attempt in $(seq 1 30); do
+            if curl -fsS 'http://127.0.0.1:9090/api/v1/query?query=up%7Bjob%3D%22netpulse%22%7D' | grep -q '"value":\[[0-9.]*,"1"\]'; then
+              echo "netpulse is being scraped"
+              exit 0
+            fi
+            sleep 5
+          done
+          exit 1
+      - name: Grafana should have loaded the dashboard
+        run: |
+          curl -fsS -u "admin:$GRAFANA_ADMIN_PASSWORD" \
+            http://127.0.0.1:3000/api/dashboards/uid/netpulse-overview | grep -q 'Netpulse overview'
+      - name: Show logs on failure
+        if: failure()
+        run: docker compose logs

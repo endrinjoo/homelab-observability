@@ -1,0 +1,17 @@
+route:
+  receiver: alert-logger
+  group_by: [alertname, target]
+  group_wait: 10s
+  group_interval: 1m
+  repeat_interval: 4h
+
+# While a target is down, its latency warning adds no information.
+inhibit_rules:
+  - source_matchers: [severity="critical"]
+    target_matchers: [severity="warning"]
+    equal: [target]
+
+receivers:
+  - name: alert-logger
+    webhook_configs:
+      - url: http://alert-logger:9000/alerts
